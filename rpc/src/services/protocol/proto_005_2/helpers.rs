@@ -7,6 +7,7 @@ use std::convert::TryInto;
 
 use failure::{bail, Fail, format_err};
 use getset::Getters;
+use serde::Serialize;
 
 use crypto::blake2b;
 use storage::num_from_slice;
@@ -14,8 +15,13 @@ use storage::persistent::{ContextList, ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_encoding::binary_reader::BinaryReader;
+use tezos_encoding::de;
+use tezos_encoding::encoding::Encoding;
+use num_bigint::BigInt;
 
 use crate::helpers::{ContextProtocolParam, get_block_timestamp_by_level};
+use crate::encoding::conversions::contract_id_to_address;
 
 #[macro_export]
 macro_rules! merge_slices {
@@ -605,4 +611,45 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
         };
     }
     Ok((v.into(), sequence))
+}
+
+/// convert zarith encoded bytes to i64
+pub(crate) fn from_zarith(zarith_num: Vec<u8>) -> Result<BigInt, failure::Error> {
+    let int64_size = std::mem::size_of::<i64>();
+    // decode the bytes using the BinaryReader
+    let intermediate = BinaryReader::new().read(&zarith_num, &Encoding::Mutez).unwrap();
+    
+    // deserialize from intermediate form
+    Ok(de::from_value::<BigInt>(&intermediate).unwrap())
+ 
+    // let mut decoded_bytes = hex::decode(&decoded_str)?;
+
+    // // try to fit the zarith number into a i64
+    // if decoded_bytes.len() <= int64_size {
+    //     // pad to the i64 size
+    //     while decoded_bytes.len() != int64_size {
+    //         decoded_bytes.insert(0, 0);
+    //     }
+    //     println!("{:?}", &decoded_bytes); 
+    //     Ok(num_from_slice!(&decoded_bytes, 0, i64))
+    // } else {
+    //     bail!("Can not convert to i64 from zarith - Bytes Overflow");
+    // }
+}
+
+#[inline]
+pub fn create_index_from_contract_id(contract_id: &str) -> Result<Vec<String>, failure::Error> {
+    const INDEX_SIZE: usize = 6;
+    let mut index = Vec::new();
+
+    // input validation is handled by the contract_id_to_address function 
+    let address = contract_id_to_address(contract_id)?;
+
+    let hashed = hex::encode(blake2b::digest_256(&address));
+
+    for elem in (0..INDEX_SIZE * 2).step_by(2) {
+        index.push(hashed[elem..elem + 2].to_string());
+    }
+
+    Ok(index)
 }
