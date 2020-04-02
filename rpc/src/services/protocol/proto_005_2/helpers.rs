@@ -7,7 +7,6 @@ use std::convert::TryInto;
 
 use failure::{bail, Fail, format_err};
 use getset::Getters;
-use serde::Serialize;
 
 use crypto::blake2b;
 use storage::num_from_slice;
@@ -18,7 +17,7 @@ use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_encoding::binary_reader::BinaryReader;
 use tezos_encoding::de;
 use tezos_encoding::encoding::Encoding;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
 
 use crate::helpers::{ContextProtocolParam, get_block_timestamp_by_level};
 use crate::encoding::conversions::contract_id_to_address;
@@ -615,13 +614,20 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
 
 /// convert zarith encoded bytes to i64
 pub(crate) fn from_zarith(zarith_num: Vec<u8>) -> Result<BigInt, failure::Error> {
-    let int64_size = std::mem::size_of::<i64>();
     // decode the bytes using the BinaryReader
     let intermediate = BinaryReader::new().read(&zarith_num, &Encoding::Mutez).unwrap();
     
+    println!("Intermediate: {:?}", intermediate);
     // deserialize from intermediate form
-    Ok(de::from_value::<BigInt>(&intermediate).unwrap())
- 
+    let mut deserialized = de::from_value::<String>(&intermediate).unwrap();
+
+    if deserialized.len() % 2 == 0 {
+        // */
+    } else {
+        deserialized.insert(0, '0');
+    }
+
+    Ok(BigInt::from_bytes_be(Sign::Plus, &hex::decode(deserialized)?))
     // let mut decoded_bytes = hex::decode(&decoded_str)?;
 
     // // try to fit the zarith number into a i64

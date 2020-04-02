@@ -4,16 +4,20 @@
 use std::collections::HashMap;
 
 use serde::Serialize;
+use getset::{CopyGetters, Getters};
 
 use crate::base::signature_public_key_hash::SignaturePublicKeyHash;
 use crate::protocol::{ToRpcJsonMap, UniversalValue};
 use tezos_encoding::types::BigInt;
 
-#[derive(Serialize)]
+#[derive(Serialize, Getters, Debug, Clone)]
 pub struct BalanceByCycle {
     cycle: i32,
+    #[get = "pub"]
     deposit: BigInt,
+    #[get = "pub"]
     fees: BigInt,
+    #[get = "pub"]
     rewards: BigInt,
 }
 
@@ -44,7 +48,7 @@ impl ToRpcJsonMap for BalanceByCycle {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Delegate {
     balance: BigInt,
     frozen_balance: BigInt,
@@ -53,7 +57,7 @@ pub struct Delegate {
     delegated_contracts: Vec<String>,
     delegated_balance: BigInt,
     deactivated: bool,
-    grace_period: i64,
+    grace_period: i32,
 }
 
 impl Delegate {
@@ -66,7 +70,7 @@ impl Delegate {
         delegated_contracts: Vec<String>,
         delegated_balance: BigInt,
         deactivated: bool,
-        grace_period: i64,
+        grace_period: i32,
     ) -> Self {
         Self {
             balance,
@@ -85,15 +89,18 @@ impl ToRpcJsonMap for Delegate {
     fn as_map(&self) -> HashMap<&'static str, UniversalValue> {
         let mut ret: HashMap<&'static str, UniversalValue> = Default::default();
         ret.insert("balance", UniversalValue::big_num(self.balance.clone()));
-        // ret.insert("delegate", UniversalValue::string(self.delegate.to_string()));
-        // ret.insert("slots", UniversalValue::num_list(self.slots.iter()));
         ret.insert("frozen_balance", UniversalValue::big_num(self.frozen_balance.clone()));
-        //ret.insert("level", UniversalValue::num(self.level));
+        let frozen_balance_by_cycle_map: Vec<HashMap<&'static str, UniversalValue>> = self.frozen_balance_by_cycle.clone()
+            .into_iter()
+            .map(|val| val.as_map())
+            .collect();
+
+        ret.insert("frozen_balance_by_cycle", UniversalValue::map_list(frozen_balance_by_cycle_map));
         ret.insert("staking_balance", UniversalValue::big_num(self.staking_balance.clone()));
-        // ret.insert("delegated_contracts", UniversalValue::num(self.level));
+        ret.insert("delegated_contracts", UniversalValue::string_list(self.delegated_contracts.clone()));
         ret.insert("delegated_balance", UniversalValue::big_num(self.delegated_balance.clone()));
-        ret.insert("deactivated", UniversalValue::num(self.deactivated));
-        ret.insert("grace_period", UniversalValue::i64(self.grace_period));
+        ret.insert("deactivated", UniversalValue::bool(self.deactivated));
+        ret.insert("grace_period", UniversalValue::num(self.grace_period));
 
         ret
     }

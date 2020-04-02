@@ -193,3 +193,11 @@ pub async fn operations(_: Request<Body>, params: Params, _: Query, env: RpcServ
 
     result_to_json_response(services::protocol::get_operations_by_protocol(chain_id, block_id, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
 }
+
+pub async fn delegates(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+    let pkh = params.get_str("pkh").unwrap();
+
+    result_to_json_response(services::protocol::get_delegate(chain_id, block_id, pkh, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
+}

@@ -254,15 +254,6 @@ pub(crate) fn get_delegate(chain_id: &str, block_id: &str, pkh: &str, persistent
         state,
     )?;
 
-    // get protocol and constants
-    let context_proto_params = get_context_protocol_params(
-        block_id,
-        None,
-        context_list.clone(),
-        persistent_storage,
-        state,
-    )?;
-
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
     match hash {
@@ -272,7 +263,7 @@ pub(crate) fn get_delegate(chain_id: &str, block_id: &str, pkh: &str, persistent
         | proto_004_constants::PROTOCOL_HASH
         | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
         proto_005_2_constants::PROTOCOL_HASH => {
-            proto_005_2::delegate_service::get_delegate(context_proto_params, chain_id, block_id, pkh, persistent_storage, context_list, state)
+            proto_005_2::delegate_service::get_delegate(context_proto_params, chain_id, pkh, context_list)
         }
         proto_006_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
         _ => panic!("Missing baking rights implemetation for protocol: {}, protocol is not yet supported!", hash)

@@ -2,23 +2,24 @@
 // SPDX-License-Identifier: MIT
 
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::convert::TryInto;
+use std::string::ToString;
 
 use failure::bail;
 
-use storage::persistent::{ContextList, PersistentStorage};
+use storage::num_from_slice;
+use storage::persistent::ContextList;
 use storage::skip_list::Bucket;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::protocol::proto_005_2::delegate::{BalanceByCycle, Delegate};
 use tezos_messages::p2p::binary_message::BinaryMessage;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, ToBigInt};
 
-use crate::rpc_actor::RpcCollectedStateRef;
 use crate::encoding::conversions::contract_id_to_address;
 use crate::helpers::ContextProtocolParam;
-use crate::services::protocol::proto_005_2::helpers::{create_index_from_contract_id, from_zarith, cycle_from_level, RightsContextData};
+use crate::services::protocol::proto_005_2::helpers::{create_index_from_contract_id, from_zarith, cycle_from_level};
 
 
 // data/contracts/index/89/8b/61/90/64/9f/0000e394872fcb92d975589fb2c5fd4aab3c7adc80f7/<*>
@@ -31,7 +32,7 @@ use crate::services::protocol::proto_005_2::helpers::{create_index_from_contract
 //      rewards
 //      deposits
 
-pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam,_chain_id: &str, block_id: &str, pkh: &str, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<RpcJsonMap>, failure::Error> {
+pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam,_chain_id: &str, pkh: &str, context_list: ContextList) -> Result<Option<RpcJsonMap>, failure::Error> {
     // get block level first
     let block_level = context_proto_params.level;
     let dynamic = tezos_messages::protocol::proto_005_2::constants::ParametricConstants::from_bytes(context_proto_params.constants_data)?;
@@ -64,43 +65,45 @@ pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam,_chain_id:
 
     let key_postfix_delegated = "delegated";
 
+    let key_postfix_inactive = "inactive_delegate";
+    let key_postfix_grace_period = "delegate_desactivation";
+    let key_postfix_change = "change";
+
 
     let balance_key = format!("{}/{}", delegate_contract_key, key_postfix_balance);
-    
+    let activity_key = format!("{}/{}", delegate_contract_key, key_postfix_inactive);
+    let grace_period_key = format!("{}/{}", delegate_contract_key, key_postfix_grace_period);
+    let change_key = format!("{}/{}", delegate_contract_key, key_postfix_change);    
 
     let balance: BigInt;
     let mut frozen_balance_by_cycle: Vec<BalanceByCycle> = Vec::new();
-    let frozen_balance: BigInt;
-    let delegate_balance: BigInt;
-    let grace_period: BigInt;
+    let grace_period: i32;
     let change: BigInt;
+    let deactivated: bool;
+
     {
         let reader = context_list.read().unwrap();
         if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &balance_key)? {
+            println!("Getting balance with key: {}", &balance_key);
             balance = from_zarith(data)?;
         } else {
             bail!("Balance not found");
         }
-        
-        // if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &balance_key)? {
-        //     staking_balance = from_zarith(data)?;
-        // } else {
-        //     bail!("staking_balance not found");
-        // }
-        if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &balance_key)? {
-            delegate_balance = from_zarith(data)?;
-        } else {
-            bail!("delegate_balance not found");
-        }
-        if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &balance_key)? {
-            grace_period = from_zarith(data)?;
+        if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &grace_period_key)? {
+            grace_period = num_from_slice!(data, 0, i32);
         } else {
             bail!("grace_period not found");
         }
-        if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &balance_key)? {
+        if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &change_key)? {
             change = from_zarith(data)?;
+            println!("Getting change with key: {}", &change_key);
         } else {
             bail!("change not found");
+        }
+        if let Some(Bucket::Exists(_)) = reader.get_key(block_level, &activity_key)? {
+            deactivated = true
+        } else {
+            deactivated = false;
         }
     };
     println!("Balance for {}: {:?}", pkh, balance);
@@ -108,35 +111,44 @@ pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam,_chain_id:
     // frozen balance
 
     for cycle in block_cycle - preserved_cycles as i64..block_cycle + 1 {
-        let reader = context_list.read().unwrap();
+        if cycle >= 0 {
+            let reader = context_list.read().unwrap();
 
-        let frozen_balance_key = format!("{}/{}/{}", delegate_contract_key, key_postfix_frozen_balance, cycle);
+            let frozen_balance_key = format!("{}/{}/{}", delegate_contract_key, key_postfix_frozen_balance, cycle);
 
-        let frozen_balance_deposits_key = format!("{}/{}", frozen_balance_key, key_postfix_deposits);
-        let frozen_balance_fees_key = format!("{}/{}", frozen_balance_key, key_postfix_fees);
-        let frozen_balance_rewards_key = format!("{}/{}", frozen_balance_key, key_postfix_rewards);
+            let frozen_balance_deposits_key = format!("{}/{}", frozen_balance_key, key_postfix_deposits);
+            let frozen_balance_fees_key = format!("{}/{}", frozen_balance_key, key_postfix_fees);
+            let frozen_balance_rewards_key = format!("{}/{}", frozen_balance_key, key_postfix_rewards);
 
-        
-        let frozen_balance_fees: BigInt;
-        let frozen_balance_deposits: BigInt;
-        let frozen_balance_rewards: BigInt;
-        // get the frozen balance dat for preserved cycles and the current one
-        if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &frozen_balance_deposits_key)? {
-            frozen_balance_deposits = from_zarith(data)?;
-        } else {
-            bail!("frozen_balance_deposits not found");
+            
+            let frozen_balance_fees: BigInt;
+            let frozen_balance_deposits: BigInt;
+            let frozen_balance_rewards: BigInt;
+            // get the frozen balance dat for preserved cycles and the current one
+            if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &frozen_balance_deposits_key)? {
+                println!("Getting frozen balance deposits with key: {}", &frozen_balance_deposits_key);
+                frozen_balance_deposits = from_zarith(data)?;
+            } else {
+                // bail!("frozen_balance_deposits not found");
+                continue;
+            }
+            if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &frozen_balance_fees_key)? {
+                println!("Getting frozen balance fees with key: {}", &frozen_balance_fees_key);
+                frozen_balance_fees = from_zarith(data)?;
+            } else {
+                // bail!("Frozen balance fees not found");
+                continue;
+
+            }
+            if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &frozen_balance_rewards_key)? {
+                println!("Getting frozen balance rewards with key: {}", &frozen_balance_rewards_key);
+                frozen_balance_rewards = from_zarith(data)?;
+            } else {
+               //  bail!("frozen_balance_rewards not found");
+               continue;
+            }
+            frozen_balance_by_cycle.push(BalanceByCycle::new(cycle.try_into()?, frozen_balance_deposits.try_into()?, frozen_balance_fees.try_into()?, frozen_balance_rewards.try_into()?));
         }
-        if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &frozen_balance_fees_key)? {
-            frozen_balance_fees = from_zarith(data)?;
-        } else {
-            bail!("Frozen balance fees not found");
-        }
-        if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &frozen_balance_rewards_key)? {
-            frozen_balance_rewards = from_zarith(data)?;
-        } else {
-            bail!("frozen_balance_rewards not found");
-        }
-        frozen_balance_by_cycle.push(BalanceByCycle::new(cycle.try_into()?, frozen_balance_deposits.try_into()?, frozen_balance_fees.try_into()?, frozen_balance_rewards.try_into()?));
     }
 
     // staking_balance
@@ -158,7 +170,7 @@ pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam,_chain_id:
     let mut roll_count: i32 = 0;
     let data: ContextMap = context.clone()
         .into_iter()
-        .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // TODO use line above after context db will contain all copied snapshots in block_id level of context list
+        .filter(|(k, _)| k.contains(&"data/rolls/owner/current")) 
         .collect();
 
     // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the public key hash address (tz1...)
@@ -190,12 +202,29 @@ pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam,_chain_id:
     let delegated_contracts: DelegatedContracts = context.clone()
             .into_iter()
             .filter(|(k, _)| k.starts_with(&delegated_contracts_key_prefix))
-            .map(|(k, _)| k.split("/").last().unwrap().to_string())
+            .map(|(k, _)| SignaturePublicKeyHash::from_tagged_hex_string(&k.split("/").last().unwrap().to_string()).unwrap().to_string())
             .collect();
 
     // delegated balance
 
-    
+    // calculate the sums of deposits, fees an rewards accross all preserved cycles, including the current one
+    let frozen_deposits: BigInt = frozen_balance_by_cycle.iter()
+        .map(|val| val.deposit().try_into().unwrap())
+        .fold(ToBigInt::to_bigint(&0).unwrap(), |acc, elem: BigInt| acc + elem);
 
-    Ok(None)
+    let frozen_fees: BigInt = frozen_balance_by_cycle.iter()
+        .map(|val| val.fees().try_into().unwrap())
+        .fold(ToBigInt::to_bigint(&0).unwrap(), |acc, elem: BigInt| acc + elem);
+
+    let frozen_rewards: BigInt = frozen_balance_by_cycle.iter()
+        .map(|val| val.rewards().try_into().unwrap())
+        .fold(ToBigInt::to_bigint(&0).unwrap(), |acc, elem: BigInt| acc + elem);
+
+    let delegated_balance: BigInt = &staking_balance - (&balance + &frozen_deposits + &frozen_fees);
+    let frozen_balance: BigInt = frozen_deposits + frozen_fees + frozen_rewards;
+    
+    let delegates = Delegate::new(balance.try_into()?, frozen_balance.try_into()?, frozen_balance_by_cycle, staking_balance.try_into()?, delegated_contracts, delegated_balance.try_into()?, deactivated, grace_period);
+    
+    Ok(Some(delegates.as_map()))
+    //Ok(None)
 }
