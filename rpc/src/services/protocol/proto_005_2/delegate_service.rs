@@ -11,16 +11,30 @@ use failure::bail;
 use storage::num_from_slice;
 use storage::persistent::ContextList;
 use storage::skip_list::Bucket;
+use storage::context_storage::contract_id_to_contract_address_for_index;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::protocol::proto_005_2::delegate::{BalanceByCycle, Delegate};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use num_bigint::{BigInt, ToBigInt};
 
-use crate::encoding::conversions::contract_id_to_address;
 use crate::helpers::ContextProtocolParam;
 use crate::services::protocol::proto_005_2::helpers::{create_index_from_contract_id, from_zarith, cycle_from_level};
 
+
+pub(crate) fn list_delegates(context_proto_params: ContextProtocolParam, _chain_id: &str, activity: bool, context_list: ContextList) {
+    let delegates: Vec<_>;
+    {
+        let reader = context_list.read().unwrap();
+        if let Ok(Some(ctx)) = reader.get(context_proto_params.level) {
+            delegates = ctx.into_iter()
+                .filter(|(k, _)| k.contains(&"inactive_delegate"))
+                .collect()
+        }
+
+
+    }
+}
 
 // data/contracts/index/89/8b/61/90/64/9f/0000e394872fcb92d975589fb2c5fd4aab3c7adc80f7/<*>
 // * -> manager
@@ -32,7 +46,7 @@ use crate::services::protocol::proto_005_2::helpers::{create_index_from_contract
 //      rewards
 //      deposits
 
-pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam,_chain_id: &str, pkh: &str, context_list: ContextList) -> Result<Option<RpcJsonMap>, failure::Error> {
+pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam, _chain_id: &str, pkh: &str, context_list: ContextList) -> Result<Option<RpcJsonMap>, failure::Error> {
     // get block level first
     let block_level = context_proto_params.level;
     let dynamic = tezos_messages::protocol::proto_005_2::constants::ParametricConstants::from_bytes(context_proto_params.constants_data)?;
@@ -53,7 +67,7 @@ pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam,_chain_id:
     // construct key for context db
     let key_prefix = "data/contracts/index";
     let index = create_index_from_contract_id(pkh)?.join("/");
-    let key = hex::encode(contract_id_to_address(pkh)?);
+    let key = hex::encode(contract_id_to_contract_address_for_index(pkh)?);
 
     let delegate_contract_key = format!("{}/{}/{}", key_prefix, index, key);
 
@@ -124,30 +138,40 @@ pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam,_chain_id:
             let frozen_balance_fees: BigInt;
             let frozen_balance_deposits: BigInt;
             let frozen_balance_rewards: BigInt;
+
+            let mut found_flag: bool = false;
             // get the frozen balance dat for preserved cycles and the current one
             if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &frozen_balance_deposits_key)? {
                 println!("Getting frozen balance deposits with key: {}", &frozen_balance_deposits_key);
                 frozen_balance_deposits = from_zarith(data)?;
+                found_flag = true;
             } else {
-                // bail!("frozen_balance_deposits not found");
-                continue;
+                println!("frozen_balance_deposits not found. Setting default value");
+                frozen_balance_deposits = Default::default();
             }
             if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &frozen_balance_fees_key)? {
                 println!("Getting frozen balance fees with key: {}", &frozen_balance_fees_key);
                 frozen_balance_fees = from_zarith(data)?;
+                found_flag = true;
             } else {
-                // bail!("Frozen balance fees not found");
-                continue;
-
+                println!("Frozen balance fees not found. Setting default value");
+                frozen_balance_fees = Default::default();
             }
             if let Some(Bucket::Exists(data)) = reader.get_key(block_level, &frozen_balance_rewards_key)? {
                 println!("Getting frozen balance rewards with key: {}", &frozen_balance_rewards_key);
                 frozen_balance_rewards = from_zarith(data)?;
+                found_flag = true;
             } else {
-               //  bail!("frozen_balance_rewards not found");
-               continue;
+                println!("frozen_balance_rewards not found. Setting default value");
+                frozen_balance_rewards = Default::default();
             }
-            frozen_balance_by_cycle.push(BalanceByCycle::new(cycle.try_into()?, frozen_balance_deposits.try_into()?, frozen_balance_fees.try_into()?, frozen_balance_rewards.try_into()?));
+            // ocaml behavior
+            // corner case - carthagenet - blocks <1, 6> including an empty array
+            // in block 7, deposits and rewards are set, so push to vector with the fetched values and set the rest to default
+            // we should push to this vec only when at least one value is found (is set in context) otherwise do not push
+            if found_flag {
+                frozen_balance_by_cycle.push(BalanceByCycle::new(cycle.try_into()?, frozen_balance_deposits.try_into()?, frozen_balance_fees.try_into()?, frozen_balance_rewards.try_into()?));
+            }
         }
     }
 
@@ -222,8 +246,9 @@ pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam,_chain_id:
 
     let delegated_balance: BigInt = &staking_balance - (&balance + &frozen_deposits + &frozen_fees);
     let frozen_balance: BigInt = frozen_deposits + frozen_fees + frozen_rewards;
+    let full_balance: BigInt = &frozen_balance + balance;
     
-    let delegates = Delegate::new(balance.try_into()?, frozen_balance.try_into()?, frozen_balance_by_cycle, staking_balance.try_into()?, delegated_contracts, delegated_balance.try_into()?, deactivated, grace_period);
+    let delegates = Delegate::new(full_balance.try_into()?, frozen_balance.try_into()?, frozen_balance_by_cycle, staking_balance.try_into()?, delegated_contracts, delegated_balance.try_into()?, deactivated, grace_period);
     
     Ok(Some(delegates.as_map()))
     //Ok(None)

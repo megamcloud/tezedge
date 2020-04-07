@@ -12,6 +12,7 @@ use crypto::blake2b;
 use storage::num_from_slice;
 use storage::persistent::{ContextList, ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
+use storage::context_storage::contract_id_to_contract_address_for_index;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_encoding::binary_reader::BinaryReader;
@@ -20,7 +21,6 @@ use tezos_encoding::encoding::Encoding;
 use num_bigint::{BigInt, Sign};
 
 use crate::helpers::{ContextProtocolParam, get_block_timestamp_by_level};
-use crate::encoding::conversions::contract_id_to_address;
 
 #[macro_export]
 macro_rules! merge_slices {
@@ -649,7 +649,7 @@ pub fn create_index_from_contract_id(contract_id: &str) -> Result<Vec<String>, f
     let mut index = Vec::new();
 
     // input validation is handled by the contract_id_to_address function 
-    let address = contract_id_to_address(contract_id)?;
+    let address = contract_id_to_contract_address_for_index(contract_id)?;
 
     let hashed = hex::encode(blake2b::digest_256(&address));
 
