@@ -12,7 +12,7 @@ use crypto::blake2b;
 use storage::num_from_slice;
 use storage::persistent::{ContextList, ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
-use storage::context_storage::contract_id_to_contract_address_for_index;
+use storage::context_action_storage::contract_id_to_contract_address_for_index;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_encoding::binary_reader::BinaryReader;

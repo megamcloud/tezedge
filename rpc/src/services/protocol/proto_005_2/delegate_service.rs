@@ -12,7 +12,8 @@ use itertools::Itertools;
 use storage::num_from_slice;
 use storage::persistent::ContextList;
 use storage::skip_list::Bucket;
-use storage::context_storage::contract_id_to_contract_address_for_index;
+use storage::context::{TezedgeContext, ContextIndex, ContextApi};
+use storage::context_action_storage::contract_id_to_contract_address_for_index;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{RpcJsonMap, ToRpcJsonMap, UniversalValue, ToRpcJsonList};
 use tezos_messages::protocol::proto_005_2::delegate::{BalanceByCycle, Delegate, DelegateList};
@@ -52,58 +53,49 @@ impl DelegateRawContextData {
     }
 }
 
-pub(crate) fn list_delegates(context_proto_params: ContextProtocolParam, _chain_id: &str, active: bool, context_list: ContextList) -> Result<Option<UniversalValue>, failure::Error> {
-    let mut delegates: Vec<_> = Default::default();
-    {
-        let reader = context_list.read().unwrap();
-        if let Ok(Some(ctx)) = reader.get(context_proto_params.level.clone()) {
-            delegates = ctx.into_iter()
-                .filter(|(k, _)| k.starts_with(&"data/delegates/"))
-                .collect()
-        }
+pub(crate) fn list_delegates(context_proto_params: ContextProtocolParam, _chain_id: &str, active: bool, context: TezedgeContext) -> Result<Option<UniversalValue>, failure::Error> {
+    let context_index = ContextIndex::new(Some(context_proto_params.level.clone()), None);
+    let delegates: ContextMap;
+    if let Some(val) = context.get_by_key_prefix(&context_index, &vec!["data".to_string(), "delegates/".to_string()])? {
+        delegates = val;
+    } else {
+        bail!("Delegate keys not found");
     }
+    println!("{:?}", delegates);
 
-    let mut prefix_test: Vec<_> = Default::default();
-    {
-        let reader = context_list.read().unwrap();
-        if let Some(Bucket::Exists(val)) = reader.get_key(context_proto_params.level.clone(), &"data/delegates/".to_string())? {
-            prefix_test.push(val);
-        }
-    }
-    println!("{:?}", prefix_test);
-
-    // cf49f66b9ea137e11818f2a78b4b6fc9895b4e50
-    // data/delegates/ed25519/cf/49/f6/6b/9e/a137e11818f2a78b4b6fc9895b4e50
-    let mut delegate_list: DelegateList = Default::default();
-    for (key, _) in delegates {
-        let address = key.split("/").skip(3).take(6).join("");
-        let curve = key.split("/").skip(2).take(1).join("");
-        
-        delegate_list.push(SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?.to_string())
-    }
-    
-    // let delegate_contract_key = construct_indexed_key(pkh)?;
     const KEY_POSTFIX_INACTIVE: &str = "inactive_delegate";
     let mut inactive_delegates: DelegateList = Default::default();
     let mut active_delegates: DelegateList = Default::default();
 
-    let list = context_list.read().expect("mutex poisoning");
-    for element in delegate_list {
-        let contract_key = construct_indexed_key(&element)?;
-        let activity_key = format!("{}/{}", contract_key, KEY_POSTFIX_INACTIVE);
-        
-        if let Some(Bucket::Exists(_)) = list.get_key(context_proto_params.level, &activity_key)? {
-            inactive_delegates.push(element);
+    for (key, _) in delegates.into_iter() {
+        let address = key.split("/").skip(3).take(6).join("");
+        let curve = key.split("/").skip(2).take(1).join("");
+
+        let pkh = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?.to_string();
+
+        let contract_key = construct_indexed_key(&pkh)?;
+        let activity_key = vec![contract_key, KEY_POSTFIX_INACTIVE.to_string()];
+        println!("Activity KEY: {}", activity_key.join("/"));
+        println!("for pkh: {}", pkh);
+        println!("");
+        if let Some(Bucket::Exists(val)) = context.get_key(&context_index, &activity_key)? {
+            println!("{}: {:?}", key, val);
+            inactive_delegates.push(pkh);
         } else {
-            active_delegates.push(element);
+            active_delegates.push(pkh);
         }
 
     }
-    // println!("{:?}", delegate_list);
 
     if active {
+        // sort the vector in reverse ordering (as in ocaml node)
+        active_delegates.sort();
+        active_delegates.reverse();
         Ok(Some(active_delegates.as_list()))
     } else {
+        // sort the vector in reverse ordering (as in ocaml node)
+        inactive_delegates.sort();
+        inactive_delegates.reverse();
         Ok(Some(inactive_delegates.as_list()))
     }
 }
@@ -126,12 +118,12 @@ fn construct_indexed_key(pkh: &str) -> Result<String, failure::Error> {
     Ok(format!("{}/{}/{}", KEY_PREFIX, index, key))
 }
 
-fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context: ContextMap, pkh: &str) -> Result<DelegateRawContextData, failure::Error> {
-    // construct key for context db
+fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context: &TezedgeContext, pkh: &str) -> Result<DelegateRawContextData, failure::Error> {
     let block_level = context_proto_params.level;
     let dynamic = tezos_messages::protocol::proto_005_2::constants::ParametricConstants::from_bytes(context_proto_params.constants_data)?;
     let preserved_cycles = dynamic.preserved_cycles();
     let blocks_per_cycle = dynamic.blocks_per_cycle();
+    let context_index = ContextIndex::new(Some(context_proto_params.level.clone()), None);
 
     // key pre and postfixes for context database
     
@@ -149,10 +141,15 @@ fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context
     
     let delegate_contract_key = construct_indexed_key(pkh)?;
 
-    let balance_key = format!("{}/{}", delegate_contract_key, KEY_POSTFIX_BALANCE);
-    let activity_key = format!("{}/{}", delegate_contract_key, KEY_POSTFIX_INACTIVE);
-    let grace_period_key = format!("{}/{}", delegate_contract_key, KEY_POSTFIX_GRACE_PERIOD);
-    let change_key = format!("{}/{}", delegate_contract_key, KEY_POSTFIX_CHANGE);
+    // let balance_key = format!("{}/{}", delegate_contract_key, KEY_POSTFIX_BALANCE);
+    // let activity_key = format!("{}/{}", delegate_contract_key, KEY_POSTFIX_INACTIVE);
+    // let grace_period_key = format!("{}/{}", delegate_contract_key, KEY_POSTFIX_GRACE_PERIOD);
+    // let change_key = format!("{}/{}", delegate_contract_key, KEY_POSTFIX_CHANGE);
+
+    let balance_key = vec![delegate_contract_key.clone(), KEY_POSTFIX_BALANCE.to_string()];
+    let activity_key = vec![delegate_contract_key.clone(), KEY_POSTFIX_INACTIVE.to_string()];
+    let grace_period_key = vec![delegate_contract_key.clone(), KEY_POSTFIX_GRACE_PERIOD.to_string()];
+    let change_key = vec![delegate_contract_key.clone(), KEY_POSTFIX_CHANGE.to_string()];
 
     let balance: BigInt;
     let mut frozen_balance_by_cycle: Vec<BalanceByCycle> = Vec::new();
@@ -161,24 +158,24 @@ fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context
     let deactivated: bool;
 
     {
-        if let Some(Bucket::Exists(data)) = context.get(&balance_key) {
+        if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &balance_key)? {
             // println!("Getting balance with key: {}", &balance_key);
-            balance = from_zarith(data)?;
+            balance = from_zarith(&data)?;
         } else {
             bail!("Balance not found");
         }
-        if let Some(Bucket::Exists(data)) =  context.get(&grace_period_key) {
+        if let Some(Bucket::Exists(data)) =  context.get_key(&context_index, &grace_period_key)? {
             grace_period = num_from_slice!(data, 0, i32);
         } else {
             bail!("grace_period not found");
         }
-        if let Some(Bucket::Exists(data)) =  context.get(&change_key) {
-            change = from_zarith(data)?;
+        if let Some(Bucket::Exists(data)) =  context.get_key(&context_index, &change_key)? {
+            change = from_zarith(&data)?;
             // println!("Getting change with key: {}", &change_key);
         } else {
             bail!("change not found");
         }
-        if let Some(Bucket::Exists(_)) =  context.get(&activity_key) {
+        if let Some(Bucket::Exists(_)) =  context.get_key(&context_index, &activity_key)? {
             deactivated = true
         } else {
             deactivated = false;
@@ -192,9 +189,9 @@ fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context
         if cycle >= 0 {
             let frozen_balance_key = format!("{}/{}/{}", delegate_contract_key, KEY_POSTFIX_FROZEN_BALANCE, cycle);
 
-            let frozen_balance_deposits_key = format!("{}/{}", frozen_balance_key, KEY_POSTFIX_DEPOSITS);
-            let frozen_balance_fees_key = format!("{}/{}", frozen_balance_key, KEY_POSTFIX_FEES);
-            let frozen_balance_rewards_key = format!("{}/{}", frozen_balance_key, KEY_POSTFIX_REWARDS);
+            let frozen_balance_deposits_key = vec![frozen_balance_key.clone(), KEY_POSTFIX_DEPOSITS.to_string()];
+            let frozen_balance_fees_key = vec![frozen_balance_key.clone(), KEY_POSTFIX_FEES.to_string()];
+            let frozen_balance_rewards_key = vec![frozen_balance_key.clone(), KEY_POSTFIX_REWARDS.to_string()];
 
             
             let frozen_balance_fees: BigInt;
@@ -203,25 +200,25 @@ fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context
 
             let mut found_flag: bool = false;
             // get the frozen balance dat for preserved cycles and the current one
-            if let Some(Bucket::Exists(data)) =  context.get(&frozen_balance_deposits_key) {
+            if let Some(Bucket::Exists(data)) =  context.get_key(&context_index, &frozen_balance_deposits_key)? {
                 // println!("Getting frozen balance deposits with key: {}", &frozen_balance_deposits_key);
-                frozen_balance_deposits = from_zarith(data)?;
+                frozen_balance_deposits = from_zarith(&data)?;
                 found_flag = true;
             } else {
                 // println!("frozen_balance_deposits not found. Setting default value");
                 frozen_balance_deposits = Default::default();
             }
-            if let Some(Bucket::Exists(data)) =  context.get(&frozen_balance_fees_key) {
+            if let Some(Bucket::Exists(data)) =  context.get_key(&context_index, &frozen_balance_fees_key)? {
                 // println!("Getting frozen balance fees with key: {}", &frozen_balance_fees_key);
-                frozen_balance_fees = from_zarith(data)?;
+                frozen_balance_fees = from_zarith(&data)?;
                 found_flag = true;
             } else {
                 // println!("Frozen balance fees not found. Setting default value");
                 frozen_balance_fees = Default::default();
             }
-            if let Some(Bucket::Exists(data)) =  context.get(&frozen_balance_rewards_key) {
+            if let Some(Bucket::Exists(data)) =  context.get_key(&context_index, &frozen_balance_rewards_key)? {
                 // println!("Getting frozen balance rewards with key: {}", &frozen_balance_rewards_key);
-                frozen_balance_rewards = from_zarith(data)?;
+                frozen_balance_rewards = from_zarith(&data)?;
                 found_flag = true;
             } else {
                 // println!("frozen_balance_rewards not found. Setting default value");
@@ -240,72 +237,70 @@ fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context
     // "data/contracts/index/ad/af/43/23/f9/3e/000003cb7d7842406496fc07288635562bfd17e176c4/delegated/72/71/28/a2/ba/a4/000049c9bce2a9d04f7b38d32398880d96e8756a1d5c"
     // we get all delegated contracts to the delegate by filtering the context with prefix:
     // "data/contracts/index/ad/af/43/23/f9/3e/000003cb7d7842406496fc07288635562bfd17e176c4/delegated"
-    let delegated_contracts_key_prefix = format!("{}/{}", delegate_contract_key, KEY_POSTFIX_DELEGATED);
-    let delegated_contracts: DelegatedContracts = context.clone()
-            .into_iter()
-            .filter(|(k, _)| k.starts_with(&delegated_contracts_key_prefix))
+    let delegated_contracts_key_prefix = vec![delegate_contract_key, KEY_POSTFIX_DELEGATED.to_string()];
+    
+    let delegated_contracts: DelegatedContracts;
+    if let Some(contracts) = context.get_by_key_prefix(&context_index, &delegated_contracts_key_prefix)? {
+        delegated_contracts = contracts.into_iter()
             .map(|(k, _)| SignaturePublicKeyHash::from_tagged_hex_string(&k.split("/").last().unwrap().to_string()).unwrap().to_string())
             .collect();
+    } else {
+        println!("No delegated contracts for {}", pkh);
+        delegated_contracts = Default::default();
+    }
 
     Ok(DelegateRawContextData::new(balance, grace_period, change, deactivated, frozen_balance_by_cycle, delegated_contracts))
 }
 
 type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
-fn get_context(block_level: usize, context_list: ContextList) -> Result<ContextMap, failure::Error> {
-    let context: ContextMap;
-    {
-        let reader = context_list.read().unwrap();
-        if let Ok(Some(ctx)) = reader.get(block_level) {
-            context = ctx
-        } else {
-            bail!("Context not found")
-        }
-    }
-    Ok(context)
-}
 
-fn get_roll_count(pkh: &str, context: ContextMap) -> Result<i32, failure::Error> {
+fn get_roll_count(level: usize, pkh: &str, context: &TezedgeContext) -> Result<usize, failure::Error> {
     // Note somethig similar is in the rigths
 
-    // simple counter to count the number of rolls the delegate owns
-    let mut roll_count: i32 = 0;
-    let data: ContextMap = context.clone()
-        .into_iter()
-        .filter(|(k, _)| k.contains(&"data/rolls/owner/current")) 
-        .collect();
+    let context_index = ContextIndex::new(Some(level), None);
 
-    // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the public key hash address (tz1...)
-    for (_, value) in data.into_iter() {
-        // the values are public keys
-        if let Bucket::Exists(pk) = value {
-            let delegate = SignaturePublicKeyHash::from_tagged_bytes(pk)?.to_string();
-            if delegate.eq(pkh) {
-                roll_count += 1;
+    // simple counter to count the number of rolls the delegate owns
+    let mut roll_count: usize = 0;
+    let roll_key = vec![
+        "data".to_string(),
+        "rolls".to_string(),
+        "owner".to_string(),
+        "current".to_string(),
+        ];
+    
+    if let Some(data) = context.get_by_key_prefix(&context_index, &roll_key)? {
+        // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the public key hash address (tz1...)
+        for (_, value) in data.into_iter() {
+            // the values are public keys
+            if let Bucket::Exists(pk) = value {
+                let delegate = SignaturePublicKeyHash::from_tagged_bytes(pk)?.to_string();
+                if delegate.eq(pkh) {
+                    roll_count += 1;
+                }
+                // roll_owners.entry(delegate)
+                // .and_modify(|val| val.push(roll_num.parse().unwrap()))
+                // .or_insert(vec![roll_num.parse().unwrap()]);
+            } else {
+                continue;  // If the value is Deleted then is skipped and it go to the next iteration
             }
-            // roll_owners.entry(delegate)
-            // .and_modify(|val| val.push(roll_num.parse().unwrap()))
-            // .or_insert(vec![roll_num.parse().unwrap()]);
-        } else {
-            continue;  // If the value is Deleted then is skipped and it go to the next iteration
         }
+    } else {
+        println!("No roll owners found");
     }
     Ok(roll_count)
 }
 
-pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam, _chain_id: &str, pkh: &str, context_list: ContextList) -> Result<Option<RpcJsonMap>, failure::Error> {
+pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam, _chain_id: &str, pkh: &str, context: TezedgeContext) -> Result<Option<RpcJsonMap>, failure::Error> {
     // get block level first
     let block_level = context_proto_params.level;
     let dynamic = tezos_messages::protocol::proto_005_2::constants::ParametricConstants::from_bytes(context_proto_params.constants_data.clone())?;
     let tokens_per_roll: BigInt = dynamic.tokens_per_roll().try_into()?;
-    
-    // we need to get the whole context down the line, so we can just fetch the whole from the sotrage here
-    let context = get_context(block_level, context_list)?;
 
     // fetch delegate data from the context
-    let delegate_data = get_delegate_context_data(context_proto_params, context.clone(), pkh)?;
+    let delegate_data = get_delegate_context_data(context_proto_params, &context, pkh)?;
 
     // staking_balance
-    let roll_count = get_roll_count(pkh, context)?;
+    let roll_count = get_roll_count(block_level, pkh, &context)?;
     
     let staking_balance: BigInt;
     staking_balance = tokens_per_roll * roll_count + delegate_data.change;

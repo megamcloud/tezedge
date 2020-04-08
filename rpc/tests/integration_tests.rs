@@ -54,6 +54,9 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
         // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?active")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?inactive")).await;
+
         // TODO: check listing
         // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &block_to_check, "votes/listings")).await;
         // --------------------------------- End of tests --------------------------------
