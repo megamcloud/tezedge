@@ -613,7 +613,7 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
 }
 
 /// convert zarith encoded bytes to i64
-pub(crate) fn from_zarith(zarith_num: Vec<u8>) -> Result<BigInt, failure::Error> {
+pub(crate) fn from_zarith(zarith_num: &Vec<u8>) -> Result<BigInt, failure::Error> {
     // decode the bytes using the BinaryReader
     let intermediate = BinaryReader::new().read(&zarith_num, &Encoding::Mutez).unwrap();
     

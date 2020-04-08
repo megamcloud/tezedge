@@ -201,3 +201,16 @@ pub async fn delegates(_: Request<Body>, params: Params, _: Query, env: RpcServi
 
     result_to_json_response(services::protocol::get_delegate(chain_id, block_id, pkh, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
 }
+
+pub async fn delegates_by_activity(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+
+    if query.contains_key("active") {
+        result_to_json_response(services::protocol::list_delegates(chain_id, block_id, true, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
+    } else if query.contains_key("inactive"){
+        result_to_json_response(services::protocol::list_delegates(chain_id, block_id, false, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
+    } else {
+        empty()
+    }
+}

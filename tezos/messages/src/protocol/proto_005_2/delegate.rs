@@ -7,7 +7,7 @@ use serde::Serialize;
 use getset::{CopyGetters, Getters};
 
 use crate::base::signature_public_key_hash::SignaturePublicKeyHash;
-use crate::protocol::{ToRpcJsonMap, UniversalValue};
+use crate::protocol::{ToRpcJsonMap, UniversalValue, ToRpcJsonList};
 use tezos_encoding::types::BigInt;
 
 #[derive(Serialize, Getters, Debug, Clone)]
@@ -103,5 +103,13 @@ impl ToRpcJsonMap for Delegate {
         ret.insert("grace_period", UniversalValue::num(self.grace_period));
 
         ret
+    }
+}
+
+pub type DelegateList = Vec<String>;
+
+impl ToRpcJsonList for DelegateList {
+    fn as_list(&self) -> UniversalValue {
+        UniversalValue::string_list(self.clone())
     }
 }

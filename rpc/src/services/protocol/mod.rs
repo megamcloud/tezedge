@@ -31,6 +31,7 @@ use tezos_messages::protocol::{
     proto_005_2 as proto_005_2_constants,
     proto_006 as proto_006_constants,
     RpcJsonMap,
+    UniversalValue
 };
 
 use crate::helpers::{get_context, get_context_protocol_params, get_level_by_block_id, BlockOperations};
@@ -264,6 +265,32 @@ pub(crate) fn get_delegate(chain_id: &str, block_id: &str, pkh: &str, persistent
         | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
         proto_005_2_constants::PROTOCOL_HASH => {
             proto_005_2::delegate_service::get_delegate(context_proto_params, chain_id, pkh, context_list)
+        }
+        proto_006_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        _ => panic!("Missing baking rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+    }
+}
+
+pub(crate) fn list_delegates(chain_id: &str, block_id: &str, activity: bool, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<UniversalValue>, failure::Error> {
+    // get protocol and constants
+    let context_proto_params = get_context_protocol_params(
+        block_id,
+        None,
+        context_list.clone(),
+        persistent_storage,
+        state,
+    )?;
+
+    // split impl by protocol
+    let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
+    match hash {
+        proto_001_constants::PROTOCOL_HASH
+        | proto_002_constants::PROTOCOL_HASH
+        | proto_003_constants::PROTOCOL_HASH
+        | proto_004_constants::PROTOCOL_HASH
+        | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_005_2_constants::PROTOCOL_HASH => {
+            proto_005_2::delegate_service::list_delegates(context_proto_params, chain_id, activity, context_list)
         }
         proto_006_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
         _ => panic!("Missing baking rights implemetation for protocol: {}, protocol is not yet supported!", hash)

@@ -161,6 +161,11 @@ impl Serialize for UniversalValue {
 
 pub type RpcJsonMap = HashMap<&'static str, UniversalValue>;
 
+pub trait ToRpcJsonList {
+    fn as_list(&self) -> UniversalValue;
+}
+
+
 /// A trait for converting a protocol data for RPC json purposes.
 pub trait ToRpcJsonMap {
     /// Converts a value of `self` to a HashMap, which can be serialized as json for rpc
