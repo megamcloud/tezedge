@@ -20,8 +20,8 @@ async fn test_rpc_compare() {
 }
 
 async fn integration_tests_rpc(from_block: i64, to_block: i64) {
-    let mut cycle_loop_counter: i64 = 0;
-    const MAX_CYCLE_LOOPS: i64 = 4;
+    // let mut cycle_loop_counter: i64 = 0;
+    // const MAX_CYCLE_LOOPS: i64 = 4;
     // const MINIMAL_BOOTSTRAP_LEVEL: i64 = 500;
 
     // if to_block >= MINIMAL_BOOTSTRAP_LEVEL {
@@ -42,8 +42,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     // }
 
     for level in from_block..to_block + 1 {
-        let block_json = get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}", "chains/main/blocks", level)).await
-            .expect("Failed to get block from ocaml");
+        // let block_json = get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}", "chains/main/blocks", level)).await
+        //     .expect("Failed to get block from ocaml");
         
         // -------------------------- Integration tests for RPC --------------------------
         // ---------------------- Please keep one function per test ----------------------
@@ -56,51 +56,54 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?active")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?inactive")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?inactive&active")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?active&inactive")).await;
+
 
         // TODO: check listing
         // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &block_to_check, "votes/listings")).await;
         // --------------------------------- End of tests --------------------------------
 
         // we need some constants for
-        let constants_json = get_rpc_as_json(NodeType::Tezedge, &format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await
-            .expect("Failed to get constants from tezedge");
+        // let constants_json = get_rpc_as_json(NodeType::Tezedge, &format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await
+        //     .expect("Failed to get constants from tezedge");
 
-        let preserved_cycles = constants_json["preserved_cycles"].as_i64().expect(&format!("No constant 'preserved_cycles' for block_id: {}", level));
-        let blocks_per_cycle = constants_json["blocks_per_cycle"].as_i64().expect(&format!("No constant 'blocks_per_cycle' for block_id: {}", level));
-        let blocks_per_roll_snapshot = constants_json["blocks_per_roll_snapshot"].as_i64().expect(&format!("No constant 'blocks_per_roll_snapshot' for block_id: {}", level));
+        // let preserved_cycles = constants_json["preserved_cycles"].as_i64().expect(&format!("No constant 'preserved_cycles' for block_id: {}", level));
+        // let blocks_per_cycle = constants_json["blocks_per_cycle"].as_i64().expect(&format!("No constant 'blocks_per_cycle' for block_id: {}", level));
+        // let blocks_per_roll_snapshot = constants_json["blocks_per_roll_snapshot"].as_i64().expect(&format!("No constant 'blocks_per_roll_snapshot' for block_id: {}", level));
 
-        // block on level 1
-        let cycle:i64 = if level == 1 {
-            0
-        } else {
-            block_json["metadata"]["level"]["cycle"].as_i64().unwrap()
-        };
+        // // block on level 1
+        // let cycle:i64 = if level == 1 {
+        //     0
+        // } else {
+        //     block_json["metadata"]["level"]["cycle"].as_i64().unwrap()
+        // };
 
-        // test last level of snapshot
-        if level >= blocks_per_roll_snapshot && level % blocks_per_roll_snapshot == 0 {
-            // --------------------- Tests for each snapshot of the cycle ---------------------
-            println!("run snapshot tests: {}, level: {:?}", cycle, level);
+        // // test last level of snapshot
+        // if level >= blocks_per_roll_snapshot && level % blocks_per_roll_snapshot == 0 {
+        //     // --------------------- Tests for each snapshot of the cycle ---------------------
+        //     println!("run snapshot tests: {}, level: {:?}", cycle, level);
 
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-1) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-10) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-1000) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-3000) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+1 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+10 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+1000 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+3000 )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-1) )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-10) )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-1000) )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-3000) )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+1 )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+10 )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+1000 )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+3000 )).await;
 
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-1) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-10) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-1000) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-3000) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+1 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+10 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+1000 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+3000 )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-1) )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-10) )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-1000) )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-3000) )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+1 )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+10 )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+1000 )).await;
+        //     test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+3000 )).await;
 
-            // ----------------- End of tests for each snapshot of the cycle ------------------
-        }
+        //     // ----------------- End of tests for each snapshot of the cycle ------------------
+        // }
             // test first and last level of cycle
         // if level == 1 || (level >= blocks_per_cycle && ( (level-1) % blocks_per_cycle == 0 || level % blocks_per_cycle == 0)) {
 

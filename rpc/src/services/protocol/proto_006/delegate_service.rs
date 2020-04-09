@@ -15,13 +15,15 @@ use storage::context::{TezedgeContext, ContextIndex, ContextApi};
 use storage::context_action_storage::contract_id_to_contract_address_for_index;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{RpcJsonMap, ToRpcJsonMap, UniversalValue, ToRpcJsonList};
-use tezos_messages::protocol::proto_005_2::delegate::{BalanceByCycle, Delegate, DelegateList};
+use tezos_messages::protocol::proto_006::delegate::{BalanceByCycle, Delegate, DelegateList};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use num_bigint::{BigInt, ToBigInt};
 
 use crate::helpers::ContextProtocolParam;
-use crate::services::protocol::proto_005_2::helpers::{create_index_from_contract_id, from_zarith, cycle_from_level, DelegateActivity, DelegateRawContextData, DelegatedContracts};
+use crate::services::protocol::proto_006::helpers::{create_index_from_contract_id, from_zarith, cycle_from_level, DelegateActivity, DelegateRawContextData, DelegatedContracts};
 use crate::services::protocol::Activity;
+use crate::merge_slices;
+
 
 // key pre and postfixes for context database
 const KEY_POSTFIX_BALANCE: &str = "balance";
@@ -59,7 +61,7 @@ fn get_activity(context: &TezedgeContext, context_index: &ContextIndex, pkh: &st
 
 pub(crate) fn list_delegates(context_proto_params: ContextProtocolParam, _chain_id: &str, activity: Activity, context: TezedgeContext) -> Result<Option<UniversalValue>, failure::Error> {
     let context_index = ContextIndex::new(Some(context_proto_params.level.clone()), None);
-    let dynamic = tezos_messages::protocol::proto_005_2::constants::ParametricConstants::from_bytes(context_proto_params.constants_data)?;
+    let dynamic = tezos_messages::protocol::proto_006::constants::ParametricConstants::from_bytes(context_proto_params.constants_data)?;
 
     let blocks_per_cycle = dynamic.blocks_per_cycle();
     let block_level = context_proto_params.level;
@@ -114,10 +116,10 @@ pub(crate) fn list_delegates(context_proto_params: ContextProtocolParam, _chain_
             Ok(Some(inactive_delegates.as_list()))
         },
         Activity::Both => {
-            active_delegates.extend(inactive_delegates);
-            active_delegates.sort();
-            active_delegates.reverse();
-            Ok(Some(active_delegates.as_list()))
+            let mut all_delegates = merge_slices!(&active_delegates, &inactive_delegates);
+            all_delegates.sort();
+            all_delegates.reverse();
+            Ok(Some(all_delegates.as_list()))
         }
     }
 }
@@ -133,7 +135,7 @@ fn construct_indexed_key(pkh: &str) -> Result<String, failure::Error> {
 /// Get all the relevant data from the context
 fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context: &TezedgeContext, pkh: &str) -> Result<DelegateRawContextData, failure::Error> {
     let block_level = context_proto_params.level;
-    let dynamic = tezos_messages::protocol::proto_005_2::constants::ParametricConstants::from_bytes(context_proto_params.constants_data)?;
+    let dynamic = tezos_messages::protocol::proto_006::constants::ParametricConstants::from_bytes(context_proto_params.constants_data)?;
     let preserved_cycles = dynamic.preserved_cycles();
     let blocks_per_cycle = dynamic.blocks_per_cycle();
     let context_index = ContextIndex::new(Some(context_proto_params.level.clone()), None);
@@ -267,7 +269,7 @@ fn get_roll_count(level: usize, pkh: &str, context: &TezedgeContext) -> Result<u
 pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam, _chain_id: &str, pkh: &str, context: TezedgeContext) -> Result<Option<RpcJsonMap>, failure::Error> {
     // get block level first
     let block_level = context_proto_params.level;
-    let dynamic = tezos_messages::protocol::proto_005_2::constants::ParametricConstants::from_bytes(context_proto_params.constants_data.clone())?;
+    let dynamic = tezos_messages::protocol::proto_006::constants::ParametricConstants::from_bytes(context_proto_params.constants_data.clone())?;
     let tokens_per_roll: BigInt = dynamic.tokens_per_roll().try_into()?;
 
     // fetch delegate data from the context

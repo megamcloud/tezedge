@@ -21,6 +21,17 @@ use crate::rpc_actor::RpcCollectedStateRef;
 
 pub type BlockOperations = Vec<Vec<HashMap<String, Value>>>;
 
+#[macro_export]
+macro_rules! merge_slices {
+    ( $($x:expr),* ) => {{
+        let mut res = vec![];
+        $(
+            res.extend_from_slice($x);
+        )*
+        res
+    }}
+}
+
 /// Object containing information to recreate the full block information
 #[derive(Serialize, Debug, Clone)]
 pub struct FullBlockInfo {

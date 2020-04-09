@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 use serde::{Deserialize, Serialize};
+use getset::{CopyGetters, Getters};
+
 use tezos_encoding::{
     types::BigInt,
     encoding::{Encoding, Field, HasEncoding},
@@ -17,9 +19,10 @@ pub const FIXED: FixedConstants = FixedConstants {
     max_proposals_per_delegate: 20,
 };
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, CopyGetters)]
 pub struct FixedConstants {
     proof_of_work_nonce_size: u8,
+    #[get_copy = "pub"]
     nonce_length: u8,
     max_revelations_per_block: u8,
     max_operation_data_length: i32,
@@ -39,18 +42,24 @@ impl ToRpcJsonMap for FixedConstants {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, CopyGetters, Getters)]
 pub struct ParametricConstants {
+    #[get_copy = "pub"]
     preserved_cycles: u8,
+    #[get_copy = "pub"]
     blocks_per_cycle: i32,
     blocks_per_commitment: i32,
+    #[get_copy = "pub"]
     blocks_per_roll_snapshot: i32,
     blocks_per_voting_period: i32,
+    #[get = "pub"]
     time_between_blocks: Vec<i64>,
+    #[get_copy = "pub"]
     endorsers_per_block: u16,
     hard_gas_limit_per_operation: BigInt,
     hard_gas_limit_per_block: BigInt,
     proof_of_work_threshold: i64,
+    #[get = "pub"]
     tokens_per_roll: BigInt,
     michelson_maximum_type_size: u16,
     seed_nonce_revelation_tip: BigInt,

@@ -20,7 +20,7 @@ use serde::Serialize;
 use crypto::hash::HashType;
 use storage::{num_from_slice, BlockStorage};
 use storage::persistent::{ContextList, ContextMap, PersistentStorage};
-use storage::context::{ContextApi, ContextIndex, TezedgeContext};
+use storage::context::{TezedgeContext};
 use storage::skip_list::Bucket;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{
@@ -37,8 +37,10 @@ use tezos_messages::protocol::{
 
 use crate::helpers::{get_context, get_context_protocol_params, get_level_by_block_id, BlockOperations};
 use crate::rpc_actor::RpcCollectedStateRef;
+// use crate::server::service::Activity;
 
 mod proto_005_2;
+mod proto_006;
 
 /// Return generated baking rights.
 ///
@@ -269,12 +271,14 @@ pub(crate) fn get_delegate(chain_id: &str, block_id: &str, pkh: &str, persistent
         proto_005_2_constants::PROTOCOL_HASH => {
             proto_005_2::delegate_service::get_delegate(context_proto_params, chain_id, pkh, context)
         }
-        proto_006_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_006_constants::PROTOCOL_HASH => {
+            proto_006::delegate_service::get_delegate(context_proto_params, chain_id, pkh, context)
+        },
         _ => panic!("Missing baking rights implemetation for protocol: {}, protocol is not yet supported!", hash)
     }
 }
 
-pub(crate) fn list_delegates(chain_id: &str, block_id: &str, activity: bool, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<UniversalValue>, failure::Error> {
+pub(crate) fn list_delegates(chain_id: &str, block_id: &str, activity: Activity, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<UniversalValue>, failure::Error> {
     // get protocol and constants
     let context_proto_params = get_context_protocol_params(
         block_id,
@@ -297,7 +301,15 @@ pub(crate) fn list_delegates(chain_id: &str, block_id: &str, activity: bool, per
         proto_005_2_constants::PROTOCOL_HASH => {
             proto_005_2::delegate_service::list_delegates(context_proto_params, chain_id, activity, context)
         }
-        proto_006_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_006_constants::PROTOCOL_HASH => {
+            proto_006::delegate_service::list_delegates(context_proto_params, chain_id, activity, context)
+        },
         _ => panic!("Missing baking rights implemetation for protocol: {}, protocol is not yet supported!", hash)
     }
+}
+
+pub enum Activity {
+    Active,
+    Inactive,
+    Both,
 }
