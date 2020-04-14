@@ -700,7 +700,7 @@ impl DelegateActivity {
         if self.deactivated {
             false
         } else {
-            (self.grace_period as i64) > current_cycle
+            (self.grace_period as i64) >= current_cycle
         }
     }
 }

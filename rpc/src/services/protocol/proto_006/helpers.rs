@@ -126,9 +126,12 @@ impl DelegateActivity {
 
     pub fn is_active(&self, current_cycle: i64) -> bool {
         if self.deactivated {
+            //println!("Deactivated: {}", self.deactivated);
+           // println!("Current: {} -- Grace: {}", current_cycle, self.grace_period);
             false
         } else {
-            (self.grace_period as i64) > current_cycle
+            //println!("Current: {} -- Grace: {}", current_cycle, self.grace_period);
+            (self.grace_period as i64) >= current_cycle
         }
     }
 }

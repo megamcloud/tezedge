@@ -83,26 +83,14 @@ pub(crate) fn list_delegates(context_proto_params: ContextProtocolParam, _chain_
 
         let pkh = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?.to_string();
 
-        let activity: DelegateActivity = get_activity(&context, &context_index, &pkh)?;
+        let delegate_activity: DelegateActivity = get_activity(&context, &context_index, &pkh)?;
 
-        if activity.is_active(block_cycle) {
+        if delegate_activity.is_active(block_cycle) {
             active_delegates.push(pkh);
         } else {
             inactive_delegates.push(pkh);
         }
     }
-
-    // if active {
-    //     // sort the vector in reverse ordering (as in ocaml node)
-    //     active_delegates.sort();
-    //     active_delegates.reverse();
-    //     Ok(Some(active_delegates.as_list()))
-    // } else {
-    //     // sort the vector in reverse ordering (as in ocaml node)
-    //     inactive_delegates.sort();
-    //     inactive_delegates.reverse();
-    //     Ok(Some(inactive_delegates.as_list()))
-    // }
 
     match activity {
         Activity::Active => {
@@ -153,13 +141,15 @@ fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context
 
     if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &balance_key)? {
         balance = from_zarith(&data)?;
+        
     } else {
         bail!("Balance not found");
     }
     if let Some(Bucket::Exists(data)) =  context.get_key(&context_index, &change_key)? {
         change = from_zarith(&data)?;
+        println!("Change: {}", change.to_str_radix(10));
     } else {
-        bail!("change not found");
+        change = ToBigInt::to_bigint(&0).unwrap();
     }
 
     let mut activity: DelegateActivity = get_activity(&context, &context_index, pkh)?;
@@ -214,11 +204,13 @@ fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context
     // "data/contracts/index/ad/af/43/23/f9/3e/000003cb7d7842406496fc07288635562bfd17e176c4/delegated"
     let delegated_contracts_key_prefix = vec![delegate_contract_key, KEY_POSTFIX_DELEGATED.to_string()];
     
-    let delegated_contracts: DelegatedContracts;
+    let mut delegated_contracts: DelegatedContracts;
     if let Some(contracts) = context.get_by_key_prefix(&context_index, &delegated_contracts_key_prefix)? {
         delegated_contracts = contracts.into_iter()
             .map(|(k, _)| SignaturePublicKeyHash::from_tagged_hex_string(&k.split("/").last().unwrap().to_string()).unwrap().to_string())
-            .collect();
+            .collect::<DelegatedContracts>();
+        delegated_contracts.sort();
+        delegated_contracts.reverse();
     } else {
         println!("No delegated contracts for {}", pkh);
         delegated_contracts = Default::default();
@@ -256,8 +248,6 @@ fn get_roll_count(level: usize, pkh: &str, context: &TezedgeContext) -> Result<u
                 if delegate.eq(pkh) {
                     roll_count += 1;
                 }
-            } else {
-                continue;  // If the value is Deleted then is skipped and it go to the next iteration
             }
         }
     } else {
@@ -279,6 +269,7 @@ pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam, _chain_id
     let roll_count = get_roll_count(block_level, pkh, &context)?;
     
     let staking_balance: BigInt;
+    println!("Roll count: {}", &roll_count);
     staking_balance = tokens_per_roll * roll_count + delegate_data.change();
 
     // delegated balance

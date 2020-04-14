@@ -22,6 +22,7 @@ use num_bigint::{BigInt, ToBigInt};
 use crate::helpers::ContextProtocolParam;
 use crate::services::protocol::proto_005_2::helpers::{create_index_from_contract_id, from_zarith, cycle_from_level, DelegateActivity, DelegateRawContextData, DelegatedContracts};
 use crate::services::protocol::Activity;
+use crate::merge_slices;
 
 // key pre and postfixes for context database
 const KEY_POSTFIX_BALANCE: &str = "balance";
@@ -81,9 +82,9 @@ pub(crate) fn list_delegates(context_proto_params: ContextProtocolParam, _chain_
 
         let pkh = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?.to_string();
 
-        let activity: DelegateActivity = get_activity(&context, &context_index, &pkh)?;
+        let delegate_activity: DelegateActivity = get_activity(&context, &context_index, &pkh)?;
 
-        if activity.is_active(block_cycle) {
+        if delegate_activity.is_active(block_cycle) {
             active_delegates.push(pkh);
         } else {
             inactive_delegates.push(pkh);
@@ -114,10 +115,10 @@ pub(crate) fn list_delegates(context_proto_params: ContextProtocolParam, _chain_
             Ok(Some(inactive_delegates.as_list()))
         },
         Activity::Both => {
-            active_delegates.extend(inactive_delegates);
-            active_delegates.sort();
-            active_delegates.reverse();
-            Ok(Some(active_delegates.as_list()))
+            let mut all_delegates = merge_slices!(&active_delegates, &inactive_delegates);
+            all_delegates.sort();
+            all_delegates.reverse();
+            Ok(Some(all_delegates.as_list()))
         }
     }
 }
