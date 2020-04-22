@@ -59,6 +59,7 @@ macro_rules! safe {
         if $buf.remaining() >= size_of::<$sz>() {
             $buf.$foo()
         } else {
+            println!("Buf (Underflow): {:?}", $buf.to_bytes().to_vec());
             return Result::Err(BinaryReaderError::Underflow { bytes: (size_of::<$sz>() - $buf.remaining()) })
          }
     }};
@@ -66,6 +67,7 @@ macro_rules! safe {
         if $buf.remaining() >= $sz {
             $exp
         } else {
+            println!("Buf (Underflow): {:?}", $buf.to_bytes().to_vec());
             return Result::Err(BinaryReaderError::Underflow { bytes: ($sz - $buf.remaining()) })
          }
     }};
@@ -117,6 +119,9 @@ impl BinaryReader {
     pub fn read<Buf: AsRef<[u8]>>(&self, buf: Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
         let mut buf = buf.as_ref();
 
+        let orig_buf = buf.clone();
+        // println!("Buf: {:?}", orig_buf);
+
         let result = match encoding {
             Encoding::Obj(schema) => self.decode_record(&mut buf, schema),
             Encoding::Tup(encodings) => self.decode_tuple(&mut buf, encodings),
@@ -126,6 +131,8 @@ impl BinaryReader {
         if buf.remaining() == 0 {
             Ok(result)
         } else {
+            println!("Buf: {:?}", orig_buf);
+            println!("Buf after: {:?}", buf);
             Err(BinaryReaderError::Overflow { bytes: buf.remaining() })
         }
     }
@@ -199,10 +206,17 @@ impl BinaryReader {
 
                 match tag_map.find_by_id(tag_id) {
                     Some(tag) => {
+                        // println!("[Debug] Tag: {:?}", tag);
                         let tag_value = self.decode_value(buf, tag.get_encoding())?;
                         Ok(Value::Tag(tag.get_variant().to_string(), Box::new(tag_value)))
                     }
-                    None => Err(BinaryReaderError::UnsupportedTag { tag: tag_id })
+                    None => {
+                        // let mut buf_state;
+                        // buf.copy_to_slice(&mut buf_state); 
+                        println!("Tagmap: {:?}", tag_map);
+                        println!("Buf: {:?}", buf.to_bytes().to_vec());
+                        Err(BinaryReaderError::UnsupportedTag { tag: tag_id })
+                    }
                 }
             }
             Encoding::List(encoding_inner) => {
@@ -364,6 +378,25 @@ mod tests {
         let reader = BinaryReader::new();
         let value = reader.read(record_buf, &Encoding::Obj(record_schema)).unwrap();
         assert_eq!(Value::Record(vec![("a".to_string(), Value::String("13b50f1e".to_string()))]), value)
+    }
+
+    #[test]
+    fn can_deserialize_enum_from_binary() {
+        #[derive(Deserialize, Debug)]
+        enum EnumType {
+            VariantA,
+            VariantB,
+        }
+        
+
+        let record_buf = hex::decode("00").unwrap();
+        let reader = BinaryReader::new();
+        let value = reader.read(record_buf, &Encoding::Enum).unwrap();
+
+        let enum_deserialized: EnumType = de::from_value(&value).unwrap();
+
+        println!("{:?}", enum_deserialized);
+        assert!(false);
     }
 
     #[test]

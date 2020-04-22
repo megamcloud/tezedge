@@ -4,4 +4,5 @@
 pub(crate) mod rights_service;
 pub(crate) mod operations_service;
 pub(crate) mod delegate_service;
+pub(crate) mod contract_service;
 mod helpers;

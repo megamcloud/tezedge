@@ -636,6 +636,14 @@ pub fn create_index_from_contract_id(contract_id: &str) -> Result<Vec<String>, f
     Ok(index)
 }
 
+pub(crate) fn construct_indexed_contract_key(pkh: &str) -> Result<String, failure::Error> {
+    const KEY_PREFIX: &str = "data/contracts/index";
+    let index = create_index_from_contract_id(pkh)?.join("/");
+    let key = hex::encode(contract_id_to_contract_address_for_index(pkh)?);
+
+    Ok(format!("{}/{}/{}", KEY_PREFIX, index, key))
+}
+
 pub type DelegatedContracts = Vec<String>;
 
 #[derive(Getters)]

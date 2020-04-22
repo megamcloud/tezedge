@@ -268,7 +268,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match *self.input {
             Value::List(ref items) => visitor.visit_seq(SeqDeserializer::new(items)),
-            _ => Err(Error::custom("not an array")),
+            _ => Err(Error::custom(format!("not an array but a {:?}", self.input))),
         }
     }
 
@@ -457,9 +457,14 @@ impl<'de, 'a> de::EnumAccess<'de> for EnumDeserializer<'a, 'de> {
     {
         match self.de.input {
             Value::Tag(variant, _) => {
+                // println!("Got Tag: {}", variant);
                 let val = variant.as_str().into_deserializer();
                 seed.deserialize(val).map(|s| (s, self))
             },
+            // Value::Enum(Some(variant), _) => {
+            //     let val = variant.as_str().into_deserializer();
+            //     seed.deserialize(val).map(|s| (s, self))
+            // },
             _ => Err(Error::custom(format!("variant_seed: not an enum but a {:?}", self.de.input))),
         }
     }
@@ -479,7 +484,10 @@ impl<'de, 'a> de::VariantAccess<'de> for EnumDeserializer<'a, 'de> {
         match self.de.input {
             Value::Tag(_, tag_value) => {
                 seed.deserialize(&mut Deserializer::new(tag_value))
-            }
+            },
+            // Value::Enum(_, Some(enum_value)) => {
+            //     seed.deserialize(&mut Deserializer::new(enum_value))
+            // },
             _ => Err(Error::custom(format!("not an enum but a {:?}", self.de.input))),
         }
     }

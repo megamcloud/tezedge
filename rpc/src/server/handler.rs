@@ -220,3 +220,11 @@ pub async fn delegates_by_activity(_: Request<Body>, params: Params, query: Quer
         empty()
     }
 }
+
+pub async fn context_contracts(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+    let pkh = params.get_str("pkh").unwrap();
+
+    result_to_json_response(services::protocol::get_contract(chain_id, block_id, pkh, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
+}

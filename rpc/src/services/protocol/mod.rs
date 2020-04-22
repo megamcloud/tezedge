@@ -274,7 +274,7 @@ pub(crate) fn get_delegate(chain_id: &str, block_id: &str, pkh: &str, persistent
         proto_006_constants::PROTOCOL_HASH => {
             proto_006::delegate_service::get_delegate(context_proto_params, chain_id, pkh, context)
         },
-        _ => panic!("Missing baking rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+        _ => panic!("Missing delegates implemetation for protocol: {}, protocol is not yet supported!", hash)
     }
 }
 
@@ -312,4 +312,34 @@ pub enum Activity {
     Active,
     Inactive,
     Both,
+}
+
+pub(crate) fn get_contract(chain_id: &str, block_id: &str, pkh: &str, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<RpcJsonMap>, failure::Error> {
+    // get protocol and constants
+    let context_proto_params = get_context_protocol_params(
+        block_id,
+        None,
+        context_list.clone(),
+        persistent_storage,
+        state,
+    )?;
+
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list);
+
+    // split impl by protocol
+    let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
+    match hash {
+        proto_001_constants::PROTOCOL_HASH
+        | proto_002_constants::PROTOCOL_HASH
+        | proto_003_constants::PROTOCOL_HASH
+        | proto_004_constants::PROTOCOL_HASH
+        | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_005_2_constants::PROTOCOL_HASH => {
+            proto_005_2::contract_service::get_contract(context_proto_params, chain_id, pkh, context)
+        }
+        proto_006_constants::PROTOCOL_HASH => {
+            panic!("not yet implemented!")
+        },
+        _ => panic!("Missing baking rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+    }
 }

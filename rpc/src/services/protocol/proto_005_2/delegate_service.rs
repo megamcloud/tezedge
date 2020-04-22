@@ -20,7 +20,7 @@ use tezos_messages::p2p::binary_message::BinaryMessage;
 use num_bigint::{BigInt, ToBigInt};
 
 use crate::helpers::ContextProtocolParam;
-use crate::services::protocol::proto_005_2::helpers::{create_index_from_contract_id, from_zarith, cycle_from_level, DelegateActivity, DelegateRawContextData, DelegatedContracts};
+use crate::services::protocol::proto_005_2::helpers::{create_index_from_contract_id, from_zarith, cycle_from_level, DelegateActivity, DelegateRawContextData, DelegatedContracts, construct_indexed_contract_key};
 use crate::services::protocol::Activity;
 use crate::merge_slices;
 
@@ -39,7 +39,7 @@ fn get_activity(context: &TezedgeContext, context_index: &ContextIndex, pkh: &st
     let deactivated;
     let grace_period;
 
-    let contract_key = construct_indexed_key(&pkh)?;
+    let contract_key = construct_indexed_contract_key(&pkh)?;
     let activity_key = vec![contract_key.clone(), KEY_POSTFIX_INACTIVE.to_string()];
     let grace_period_key = vec![contract_key, KEY_POSTFIX_GRACE_PERIOD.to_string()];
 
@@ -123,14 +123,6 @@ pub(crate) fn list_delegates(context_proto_params: ContextProtocolParam, _chain_
     }
 }
 
-fn construct_indexed_key(pkh: &str) -> Result<String, failure::Error> {
-    const KEY_PREFIX: &str = "data/contracts/index";
-    let index = create_index_from_contract_id(pkh)?.join("/");
-    let key = hex::encode(contract_id_to_contract_address_for_index(pkh)?);
-
-    Ok(format!("{}/{}/{}", KEY_PREFIX, index, key))
-}
-
 /// Get all the relevant data from the context
 fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context: &TezedgeContext, pkh: &str) -> Result<DelegateRawContextData, failure::Error> {
     let block_level = context_proto_params.level;
@@ -141,7 +133,7 @@ fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context
     
     let block_cycle = cycle_from_level(block_level.try_into()?, blocks_per_cycle)?;
     
-    let delegate_contract_key = construct_indexed_key(pkh)?;
+    let delegate_contract_key = construct_indexed_contract_key(pkh)?;
 
     let balance_key = vec![delegate_contract_key.clone(), KEY_POSTFIX_BALANCE.to_string()];
     let change_key = vec![delegate_contract_key.clone(), KEY_POSTFIX_CHANGE.to_string()];
