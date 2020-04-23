@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use getset::{Getters};
 
 use crate::base::signature_public_key_hash::SignaturePublicKeyHash;
 use crate::protocol::{ToRpcJsonMap, UniversalValue};
@@ -17,7 +18,7 @@ use tezos_encoding::{
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Getters)]
 pub struct Script {
     code: Code,
     storage: Vec<MichelsonExpression>,
@@ -26,12 +27,33 @@ pub struct Script {
     body: BinaryDataCache,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Getters)]
 pub struct Code {
-    code: Vec<MichelsonExpression>,
+    #[get = "pub"]
+    code: Box<MichelsonExpression>,
 
     #[serde(skip_serializing)]
     body: BinaryDataCache,
+}
+
+impl CachedData for Code {
+    #[inline]
+    fn cache_reader(&self) -> &dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
+}
+
+impl HasEncoding for Code {
+    fn encoding() -> Encoding {
+        Encoding::Obj(vec![
+            Field::new("code", Encoding::dynamic(Encoding::Lazy(Arc::new(MichelsonExpression::encoding))))
+        ])
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -40,7 +62,7 @@ pub enum MichelsonExpression {
     String(MichelsonExpString),
     Array(Vec<Box<MichelsonExpression>>),
     Primitive(MichelsonExpPrimitive),
-    PrimitiveWithAnotations(MichelsonExpPrimitiveWithAnotations),
+    PrimitiveWithAnotations(Box<MichelsonExpPrimitiveWithAnotations>),
     PrimitiveWithSingleArgument(Box<MichelsonExpPrimitiveWithSingleArgument>),
     PrimitiveWithTwoArguments(Box<MichelsonExpPrimitiveWithTwoArguments>),
     PrimitiveWithSingleArgumentAndAnotations(Box<MichelsonExpPrimitiveWithSingleArgumentAndAnotations>),
@@ -53,8 +75,8 @@ impl HasEncoding for MichelsonExpression {
         Encoding::Tags(
             size_of::<u8>(),
             TagMap::new(&[
-                Tag::new(0x00, "Int", Encoding::Mutez),
-                Tag::new(0x01, "String", Encoding::String),
+                Tag::new(0x00, "Int", MichelsonExpInt::encoding()),
+                Tag::new(0x01, "String", MichelsonExpString::encoding()),
                 Tag::new(0x02, "Array", Encoding::dynamic(Encoding::list(Encoding::Lazy(Arc::new(MichelsonExpression::encoding))))),
                 Tag::new(0x03, "Primitive", MichelsonExpPrimitive::encoding()),
                 Tag::new(0x04, "PrimitiveWithAnotations", MichelsonExpPrimitiveWithAnotations::encoding()),
@@ -163,7 +185,7 @@ impl HasEncoding for MichelsonExpPrimitiveWithTwoArguments {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
             Field::new("prim", Encoding::Tags(size_of::<u8>(), michelson_primitive_tag_map())),
-            Field::new("args", Encoding::list(Encoding::Lazy(Arc::new(MichelsonExpression::encoding)))),
+            Field::new("args", Encoding::array(2, Encoding::Lazy(Arc::new(MichelsonExpression::encoding)))),
         ])
     }
 }
@@ -200,7 +222,7 @@ impl HasEncoding for MichelsonExpPrimitiveWithTwoArgumentsAndAnotations {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
             Field::new("prim", Encoding::Tags(size_of::<u8>(), michelson_primitive_tag_map())),
-            Field::new("args", Encoding::list(Encoding::Lazy(Arc::new(MichelsonExpression::encoding)))),
+            Field::new("args", Encoding::array(2, Encoding::Lazy(Arc::new(MichelsonExpression::encoding)))),
             Field::new("anots", Encoding::String),
         ])
     }
@@ -222,137 +244,6 @@ impl HasEncoding for MichelsonExpPrimitiveWithNArguments {
         ])
     }
 }
-
-// #[derive(Serialize, Deserialize, Debug, Clone)]
-// pub struct MichelsonExpressionPlaceHolder {
-//     int: Option<BigInt>,
-//     string: Option<String>,
-//     prim: Option<MichelsonPrimitive>,
-//     args: Option<Vec<Box<MichelsonExpressionPlaceHolder>>>,
-//     anots: Option<Vec<String>>,
-
-//     // #[serde(skip_serializing)]
-//     // body: BinaryDataCache,
-// }
-
-impl CachedData for Code {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
-
-impl HasEncoding for Code {
-    fn encoding() -> Encoding {
-        Encoding::Obj(vec![
-            Field::new("code", Encoding::dynamic(Encoding::list(MichelsonExpression::encoding())))
-        ])
-    }
-}
-
-// #[derive(Serialize, Debug, Clone)]
-// pub struct Storage {
-//     storage: String,
-
-//     #[serde(skip_serializing)]
-//     body: BinaryDataCache,
-// }
-
-// impl HasEncoding for Storage {
-//     fn encoding() -> Encoding {
-//         // TODO ?
-//         Encoding::dynamic(Encoding::list(MichelsonExpressionPlaceHolder::encoding()))
-//     }
-// }
-
-// impl CachedData for Storage {
-//     #[inline]
-//     fn cache_reader(&self) -> &dyn CacheReader {
-//         &self.body
-//     }
-
-//     #[inline]
-//     fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-//         Some(&mut self.body)
-//     }
-// }
-
-// pub fn array_encoding() -> Encoding {
-    
-// }
-
-// pub fn single_prim_with_anot_encoding() -> Encoding {
-//     Encoding::Obj(vec![
-//         Field::new("prim", Encoding::Enum),
-//         // TODO this needs post processing, multiple anots are encoded as one stirng seperated with <space> character 
-//         Field::new("anot", Encoding::String),
-//     ])
-// }
-
-// pub fn single_prim_with_single_args_encoding() -> Encoding {
-//     Encoding::Obj(vec![
-//         Field::new("prim", Encoding::Enum),
-//         Field::new("args", Encoding::Lazy(Arc::new(MichelsonExpressionPlaceHolder::encoding))),
-//     ])
-// }
-
-// pub fn single_prim_with_two_args_encoding() -> Encoding {
-//     Encoding::Obj(vec![
-//         Field::new("prim", Encoding::Enum),
-//         // Field::new("args", Encoding::dynamic(Encoding::list(Encoding::Lazy(Arc::new(MichelsonExpressionPlaceHolder::encoding))))),
-//         Field::new("args", Encoding::list(Encoding::Lazy(Arc::new(MichelsonExpressionPlaceHolder::encoding)))),
-//     ])
-// }
-
-// pub fn single_prim_with_two_args_with_anot() -> Encoding {
-//     Encoding::Obj(vec![
-//         Field::new("prim", Encoding::Enum),
-//         Field::new("args", Encoding::list(Encoding::Lazy(Arc::new(MichelsonExpressionPlaceHolder::encoding)))),
-//         Field::new("anot", Encoding::String),
-//     ])
-// }
-
-// pub fn single_prim_with_one_arg_with_anot() -> Encoding {
-//     Encoding::Obj(vec![
-//         Field::new("prim", Encoding::Enum),
-//         Field::new("args", Encoding::Lazy(Arc::new(MichelsonExpressionPlaceHolder::encoding))),
-//         Field::new("anot", Encoding::String),
-//     ])
-// }
-
-// pub fn single_prim_with_n_args_with_optional_anot() -> Encoding {
-//     Encoding::Obj(vec![
-//         Field::new("prim", Encoding::Enum),
-//         Field::new("args", Encoding::Lazy(Arc::new(MichelsonExpressionPlaceHolder::encoding))),
-
-//         // TODO: make this optional
-//         Field::new("anot", Encoding::dynamic(Encoding::list(Encoding::String))),
-//     ])
-// }
-
-// pub fn michelson_expression_encoding() -> Encoding {
-//     Encoding::Tags(
-//         size_of::<u8>(),
-//         TagMap::new(&[
-//             Tag::new(0x00, "int", Encoding::Mutez),
-//             Tag::new(0x01, "string", Encoding::String),
-//             Tag::new(0x02, "array", Encoding::Lazy(Arc::new(array_encoding))),
-//             Tag::new(0x03, "prim", Encoding::Enum),
-//             Tag::new(0x04, "single_prim_with_anot", single_prim_with_anot_encoding()),
-//             Tag::new(0x05, "single_prim_with_single_arg", single_prim_with_single_args_encoding()),
-//             Tag::new(0x06, "single_prim_with_single_arg_with_anot", single_prim_with_one_arg_with_anot()),
-//             Tag::new(0x07, "single_prim_with_two_args", single_prim_with_two_args_encoding()),
-//             Tag::new(0x08, "single_prim_with_two_args_with_anot",  single_prim_with_two_args_with_anot()),
-//             Tag::new(0x09, "single_prim_with_n_args", single_prim_with_n_args_with_optional_anot()),
-//             //Tag::new(0x10, "arbitrary_binary_data", Encoding::Bytes)
-//         ])
-//     )
-// }
 
 pub fn michelson_primitive_tag_map() -> TagMap {
     let primitive_vec = vec![
@@ -734,25 +625,7 @@ impl MichelsonPrimitive {
             MichelsonPrimitive::chain_id => "chain_id",
         }
     }
-
-    // pub fn get_tag(&self) -> u16 {
-        
-    //     // TODO: make this safe
-    //     primitive_vec.iter().position(|r| r == self).unwrap() as u16
-    // }
 }
-
-// impl CachedData for MichelsonExpressionPlaceHolder {
-//     #[inline]
-//     fn cache_reader(&self) -> &dyn CacheReader {
-//         &self.body
-//     }
-
-//     #[inline]
-//     fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-//         Some(&mut self.body)
-//     }
-// }
 
 #[derive(Serialize, Debug, Clone)]
 pub struct Contract {

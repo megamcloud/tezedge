@@ -267,7 +267,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             V: Visitor<'de>,
     {
         match *self.input {
-            Value::List(ref items) => visitor.visit_seq(SeqDeserializer::new(items)),
+            Value::List(ref items) => {
+                // println!("VALUE::LIST: {:?}", items);
+                // println!("Len: {}", items.len());
+                visitor.visit_seq(SeqDeserializer::new(items))
+            }
             _ => Err(Error::custom(format!("not an array but a {:?}", self.input))),
         }
     }

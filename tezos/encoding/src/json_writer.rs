@@ -234,6 +234,21 @@ impl JsonWriter {
                     _ => Err(Error::encoding_mismatch(encoding, value))
                 }
             }
+            Encoding::Array(list_inner_encoding, count) => {
+                match value {
+                    Value::List(ref values) => {
+                        self.open_array();
+                        for (idx, value) in values.iter().enumerate() {
+                            if idx > 0 {
+                                self.push_delimiter();
+                            }
+                            self.encode_value(value, list_inner_encoding)?;
+                        }
+                        Ok(self.close_array())
+                    }
+                    _ => Err(Error::encoding_mismatch(encoding, value))
+                }
+            }
             Encoding::Bytes => {
                 match value {
                     Value::List(values) => {

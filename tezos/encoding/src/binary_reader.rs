@@ -129,6 +129,7 @@ impl BinaryReader {
         }?;
 
         if buf.remaining() == 0 {
+            //println!("Result: {:?}", result);
             Ok(result)
         } else {
             println!("Buf: {:?}", orig_buf);
@@ -227,6 +228,23 @@ impl BinaryReader {
                 let mut values = vec![];
                 while buf_slice.remaining() > 0 {
                     values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                }
+
+                Ok(Value::List(values))
+            }
+            Encoding::Array(encoding_inner, count) => {
+                let bytes_sz = buf.remaining();
+
+                let mut buf_slice = buf.take(bytes_sz);
+
+                let mut values = vec![];
+                while buf_slice.remaining() > 0 {
+                    values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                    if values.len() == *count {
+                        // buf.chain(buf_slice);
+                        // buf = &mut buf.chain(buf_slice);
+                        break;
+                    }
                 }
 
                 Ok(Value::List(values))

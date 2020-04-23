@@ -204,6 +204,7 @@ pub enum Encoding {
     /// This is used to handle recursive encodings needed to encode tree structure.
     /// Encoding itself produces no output in binary or json.
     Lazy(Arc<dyn RecursiveEncodingFn<Output=Encoding> + Send + Sync>),
+    Array(Box<Encoding>, usize),
 }
 
 impl Encoding {
@@ -248,6 +249,11 @@ impl Encoding {
     #[inline]
     pub fn option(encoding: Encoding) -> Encoding {
         Encoding::Option(Box::new(encoding))
+    }
+
+    #[inline]
+    pub fn array(size: usize, encoding: Encoding) -> Encoding {
+        Encoding::Array(Box::new(encoding), size)
     }
 }
 

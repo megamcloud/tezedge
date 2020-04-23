@@ -260,6 +260,19 @@ impl BinaryWriter {
                     _ => Err(Error::encoding_mismatch(encoding, value))
                 }
             }
+            Encoding::Array(list_inner_encoding, count) => {
+                match value {
+                    Value::List(values) => {
+                        let data_len_before_write = self.data.len();
+                        // write data
+                        for value in values {
+                            self.encode_value(value, list_inner_encoding)?;
+                        }
+                        Ok(self.data.len() - data_len_before_write)
+                    }
+                    _ => Err(Error::encoding_mismatch(encoding, value))
+                }
+            }
             Encoding::Bytes => {
                 match value {
                     Value::List(values) => {
