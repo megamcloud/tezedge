@@ -87,6 +87,9 @@ impl ToRpcJsonMap for MichelsonJsonElement {
         if let Some(s) = &self.anots {
             ret.insert("anots", UniversalValue::string_list(s.clone()));
         }
+        if let Some(s) = &self.nested {
+            ret.insert("array", UniversalValue::map_list::<Vec<HashMap<&'static str, UniversalValue>>>(s.iter().map(|elem| elem.as_map()).collect()));
+        }
 
         ret
     }
@@ -101,15 +104,6 @@ impl MichelsonJsonElement {
             args,
             anots,
             nested,
-        }
-    }
-
-    pub fn colapse(&self, ret: &mut Vec<Self>) {
-        ret.push(self.clone());
-        if let Some(jsonel) = &self.nested {
-            for el in jsonel {
-                el.colapse(ret);
-            }
         }
     }
 }

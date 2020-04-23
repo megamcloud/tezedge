@@ -45,11 +45,11 @@ pub(crate) fn get_contract(context_proto_params: ContextProtocolParam, _chain_id
         contract_script_code = None;
     }
 
-    // println!("{:?}", contract_script_code.unwrap().code().simplify());
-    let tmp_test = contract_script_code.unwrap().code().simplify();
-    let mut json_vec: Vec<MichelsonJsonElement> = Default::default();
-    tmp_test.colapse(&mut json_vec);
-    println!("{:?}", json_vec.iter().map(|elem| elem.as_map()).collect::<RpcJsonMapVector>());
+    // println!("{:?}", contract_script_code.unwrap().code().simplify().as_map());
+    // let tmp_test = contract_script_code.unwrap().code().simplify();
+    // let mut json_vec: Vec<MichelsonJsonElement> = Default::default();
+    // tmp_test.colapse(&mut json_vec);
+    // println!("{:?}", json_vec.iter().map(|elem| elem.as_map()).collect::<RpcJsonMapVector>());
 
     // ["data","contracts","index","91","6e","d7","72","4e","49","0000535110affdb82923710d1ec205f26ba8820a2259","data","storage"]
     let contract_script_storage;
@@ -71,5 +71,5 @@ pub(crate) fn get_contract(context_proto_params: ContextProtocolParam, _chain_id
 
 
 
-    Ok(None)
+    Ok(Some(contract_script_code.unwrap().code().simplify().as_map()))
 }
