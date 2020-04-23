@@ -57,6 +57,64 @@ impl HasEncoding for Code {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MichelsonJsonElement {
+    int: Option<String>,
+    string: Option<String>,
+    prim: Option<String>,
+    args: Option<Vec<Box<MichelsonJsonElement>>>,
+    anots: Option<Vec<String>>,
+    nested: Option<Vec<Box<MichelsonJsonElement>>>,
+}
+
+pub type RpcJsonMapVector = Vec<HashMap<&'static str, UniversalValue>>;
+
+impl ToRpcJsonMap for MichelsonJsonElement {
+    fn as_map(&self) -> HashMap<&'static str, UniversalValue> {
+        let mut ret: HashMap<&'static str, UniversalValue> = Default::default();
+        
+        if let Some(s) = &self.int {
+            ret.insert("int", UniversalValue::string(s.clone()));
+        }
+        if let Some(s) = &self.string {
+            ret.insert("string", UniversalValue::string(s.clone()));
+        }
+        if let Some(s) = &self.prim {
+            ret.insert("prim", UniversalValue::string(s.clone()));
+        }
+        if let Some(s) = &self.args {
+            ret.insert("args", UniversalValue::map_list::<Vec<HashMap<&'static str, UniversalValue>>>(s.iter().map(|elem| elem.as_map()).collect()));
+        }
+        if let Some(s) = &self.anots {
+            ret.insert("anots", UniversalValue::string_list(s.clone()));
+        }
+
+        ret
+    }
+}
+
+impl MichelsonJsonElement {
+    pub fn new(int: Option<String>, string: Option<String>, prim: Option<String>, args: Option<Vec<Box<MichelsonJsonElement>>>, anots: Option<Vec<String>>, nested: Option<Vec<Box<MichelsonJsonElement>>>) -> Self {
+        Self {
+            int,
+            string,
+            prim,
+            args,
+            anots,
+            nested,
+        }
+    }
+
+    pub fn colapse(&self, ret: &mut Vec<Self>) {
+        ret.push(self.clone());
+        if let Some(jsonel) = &self.nested {
+            for el in jsonel {
+                el.colapse(ret);
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum MichelsonExpression {
     Int(MichelsonExpInt),
     String(MichelsonExpString),
@@ -69,6 +127,94 @@ pub enum MichelsonExpression {
     PrimitiveWihtTwoArgumentsAndAnotations(Box<MichelsonExpPrimitiveWithTwoArgumentsAndAnotations>),
     PrimitiveWithNArguments(Box<MichelsonExpPrimitiveWithNArguments>),
 }
+
+impl MichelsonExpression {
+    pub fn simplify(&self) -> MichelsonJsonElement {
+        match self {
+            Self::Int(int_exp) => MichelsonJsonElement::new(
+                Some(int_exp.int.0.to_str_radix(10)), 
+                None, 
+                None, 
+                None,
+                None,
+                None, 
+            ),
+            Self::String(string_exp) => MichelsonJsonElement::new(
+                None, 
+                Some(string_exp.string.clone()), 
+                None, 
+                None,
+                None,
+                None, 
+            ),
+            Self::Primitive(prim_exp) => MichelsonJsonElement::new(
+                None, 
+                None, 
+                Some(prim_exp.prim.as_custom_named_variant().to_string()), 
+                None,
+                None,
+                None, 
+            ),
+            Self::PrimitiveWithAnotations(exp) => MichelsonJsonElement::new(
+                None, 
+                None, 
+                Some(exp.prim.as_custom_named_variant().to_string()), 
+                None,
+                Some(exp.anots.split(" ").map(|s| s.to_string()).collect()),
+                None, 
+            ),
+            Self::PrimitiveWithSingleArgument(exp) => MichelsonJsonElement::new(
+                None, 
+                None, 
+                Some(exp.prim.as_custom_named_variant().to_string()), 
+                Some(vec![Box::new(exp.args.simplify())]),
+                None,
+                None, 
+            ),
+            Self::PrimitiveWithSingleArgumentAndAnotations(exp) => MichelsonJsonElement::new(
+                None, 
+                None, 
+                Some(exp.prim.as_custom_named_variant().to_string()), 
+                Some(vec![Box::new(exp.args.simplify())]),
+                Some(exp.anots.split(" ").map(|s| s.to_string()).collect()),
+                None, 
+            ),
+            Self::Array(exp) => MichelsonJsonElement::new(
+                None, 
+                None, 
+                None,
+                None,
+                None,
+                Some(exp.iter().map(|elem| Box::new(elem.simplify())).collect()), 
+            ),
+            Self::PrimitiveWithTwoArguments(exp) => MichelsonJsonElement::new(
+                None, 
+                None, 
+                Some(exp.prim.as_custom_named_variant().to_string()), 
+                Some(exp.args.iter().map(|arg| Box::new(arg.simplify())).collect()), 
+                None,
+                None, 
+            ),
+            Self::PrimitiveWihtTwoArgumentsAndAnotations(exp) => MichelsonJsonElement::new(
+                None, 
+                None, 
+                Some(exp.prim.as_custom_named_variant().to_string()), 
+                Some(exp.args.iter().map(|arg| Box::new(arg.simplify())).collect()), 
+                Some(exp.anots.split(" ").map(|s| s.to_string()).collect()),
+                None, 
+            ),
+            Self::PrimitiveWithNArguments(exp) => MichelsonJsonElement::new(
+                None, 
+                None, 
+                Some(exp.prim.as_custom_named_variant().to_string()), 
+                Some(exp.args.iter().map(|arg| Box::new(arg.simplify())).collect()), 
+                None,
+                None, 
+            ),
+        }
+    }
+}
+
 
 impl HasEncoding for MichelsonExpression {
     fn encoding() -> Encoding {
@@ -116,18 +262,6 @@ impl HasEncoding for MichelsonExpString {
         ])
     }
 }
-
-// #[derive(Serialize, Deserialize, Debug, Clone)]
-// pub struct MichelsonExpArray {
-//     array: Vec<MichelsonExpression>,
-// }
-
-// impl HasEncoding for MichelsonExpArray {
-//     fn encoding() -> Encoding {
-//         Encoding::dynamic(Encoding::list(Encoding::Lazy(Arc::new(MichelsonExpression::encoding))))
-//         // Encoding::Lazy(Arc::new(Encoding::dynamic(Encoding::list(MichelsonExpression::encoding()))))
-//     }
-// }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MichelsonExpPrimitive {

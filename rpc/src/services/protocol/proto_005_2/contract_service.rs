@@ -9,6 +9,7 @@ use storage::num_from_slice;
 use storage::skip_list::Bucket;
 use storage::context::{TezedgeContext, ContextIndex, ContextApi};
 use tezos_messages::protocol::{RpcJsonMap, ToRpcJsonMap,UniversalValue};
+use tezos_messages::protocol::proto_005_2::contract::{MichelsonJsonElement, RpcJsonMapVector};
 // use tezos_messages::protocol::proto_005_2::delegate::{BalanceByCycle, Delegate, DelegateList};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 //use tezos_messages::protocol::proto_005_2::
@@ -43,7 +44,12 @@ pub(crate) fn get_contract(context_proto_params: ContextProtocolParam, _chain_id
         // Set the value to default as implicit contracts have no script attached
         contract_script_code = None;
     }
-    println!("{:?}", contract_script_code);
+
+    // println!("{:?}", contract_script_code.unwrap().code().simplify());
+    let tmp_test = contract_script_code.unwrap().code().simplify();
+    let mut json_vec: Vec<MichelsonJsonElement> = Default::default();
+    tmp_test.colapse(&mut json_vec);
+    println!("{:?}", json_vec.iter().map(|elem| elem.as_map()).collect::<RpcJsonMapVector>());
 
     // ["data","contracts","index","91","6e","d7","72","4e","49","0000535110affdb82923710d1ec205f26ba8820a2259","data","storage"]
     let contract_script_storage;
